@@ -1,0 +1,25 @@
+# Build
+*.obj
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+*.log
+x64/
+Debug/
+Release/
+
+# VS
+.vs/
+*.vcxproj.user
+*.suo
+*.sdf
+*.opensdf
+*.db
+ipch/
+
+# Other
+*.bak
+*.tmp
