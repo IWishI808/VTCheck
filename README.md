@@ -1,52 +1,81 @@
 # VTCheck
 
-Runtime vtable integrity checker for Windows x64 binaries. Validates that vtable pointers and their entries haven't been tampered with by comparing against the on-disk module image.
+VTCheck is a Windows x64 research prototype for validating COM and C++ virtual
+method table integrity. It focuses on detecting vtable pointer replacement,
+vtable entry redirection, suspicious memory protections, and MSVC RTTI chain
+inconsistencies.
 
-Currently focused on DXGI/D3D vtables but the core validation logic is generic.
+The project is defensive tooling: it helps analysts reason about hook detection
+and object-layout integrity in authorized applications and lab binaries.
 
-## What it does
+## What is implemented
 
-- Validates vtable pointers land in `.rdata` of the expected module
-- Checks each vtable entry points to code within the expected module's `.text` section
-- Verifies memory protection on vtable regions (should be PAGE_READONLY)
-- Parses MSVC RTTI structures to validate the class hierarchy chain
-- Monitors IDXGISwapChain::Present for hooks
+- validation that a vtable pointer lands inside the expected module's `.rdata`
+  section
+- validation that vtable entries point back into the expected module image
+- `.text` section checks for individual virtual function entries
+- `VirtualQuery` checks for suspicious writable vtable memory
+- MSVC x64 RTTI parsing through `CompleteObjectLocator`
+- class hierarchy walking through RTTI descriptors
+- DXGI `IDXGISwapChain::Present` and `ResizeBuffers` comparison helpers
 
-## Building
+## Defensive use cases
 
-Visual Studio 2022, x64. No external dependencies.
+- detect direct vtable entry patching
+- detect full vtable replacement with heap-backed copies
+- validate RTTI metadata during reverse engineering
+- inspect COM interfaces commonly targeted by overlays and hooks
+- compare in-memory vtable entries against the expected module boundary
 
+## Build notes
+
+This repository exposes library-style source files rather than a standalone CLI.
+Compile the source into your own Visual Studio project or object files:
+
+```bat
+cl /EHsc /W4 /O2 /DWIN32_LEAN_AND_MEAN /std:c++17 /c src\vtable_scan.cpp src\rtti_parse.cpp src\dxgi_monitor.cpp
 ```
-msbuild VTCheck.sln /p:Configuration=Release /p:Platform=x64
+
+Link with:
+
+```bat
+psapi.lib dbghelp.lib
 ```
 
-Or just open the sln and hit build.
-
-## Usage
+## Example
 
 ```cpp
 #include "vtcheck.h"
 
-// Validate any COM object's vtable
-IUnknown* obj = /* ... */;
-VTABLE_INFO info = scan_object(obj, L"d3d11.dll");
+IUnknown* object = /* object to inspect */;
+VTABLE_INFO info = scan_object(object, L"dxgi.dll");
+
 if (!info.is_valid) {
-    // vtable has been modified
+    // vtable pointer, entries, or memory protections are suspicious
 }
 
-// RTTI validation
 RTTI_INFO rtti = {};
-if (validate_rtti_chain(obj, L"dxgi.dll", &rtti)) {
+if (validate_rtti_chain(object, L"dxgi.dll", &rtti)) {
     printf("class: %s\n", rtti.class_name);
 }
 ```
 
-## Status
+## Current status
 
-WIP. Core validation works but needs more testing against real hooks. DXGI monitoring loop is rough.
+Core validation logic is present, but this is still research code. It needs more
+testing against benign overlays, legitimate hooks, rebased modules, and multiple
+compiler/RTTI configurations. The DXGI monitor is a helper, not a full
+continuous monitoring agent.
 
-## Notes
+## Responsible use
 
-- Only supports x64 MSVC binaries (RTTI layout is compiler-specific)
-- vtable[-1] points to CompleteObjectLocator in MSVC ABI
-- Module base address caching needs work for modules that get rebased
+VTCheck is intended for defensive analysis, reverse engineering, and authorized
+hook-detection labs. It does not include hook installation or bypass code.
+
+## Related writeup
+
+- [VMT Hooking Detection](https://iwishi808.github.io/2026/05/12/vmt-hooking-detection/)
+
+## License
+
+MIT
